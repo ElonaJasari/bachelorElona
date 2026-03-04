@@ -1,44 +1,95 @@
 "use client";
 
-export default function Home() {
+import { useMemo, useState } from "react";
 
-  const speak = () => {
-    const text =
-      "";
+const videos = [
+  {
+    id: "1",
+    title: "1. Hva er valgfrihet?",
+    url: "https://share.synthesia.io/embeds/videos/46623012-eb25-4ed7-abd0-2600205c214c",
+  },
+  {
+    id: "2",
+    title: "2. Å ta egne valg",
+    url: "https://share.synthesia.io/embeds/videos/46623012-eb25-4ed7-abd0-2600205c214c",
+  },
+  {
+    id: "3",
+    title: "3. Konsekvenser",
+    url: "https://share.synthesia.io/embeds/videos/46623012-eb25-4ed7-abd0-2600205c214c",
+  },
+];
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "en-US";
-    utterance.rate = 0.9;
+export default function TemaTest() {
+  const [currentIndex, setCurrentIndex] = useState(0);
 
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
+  const current = videos[currentIndex];
+  const nextExists = currentIndex < videos.length - 1;
+
+  const progressText = useMemo(
+    () => `Video ${currentIndex + 1} av ${videos.length}`,
+    [currentIndex]
+  );
+
+  const goNext = () => {
+    if (!nextExists) return;
+    setCurrentIndex((i) => i + 1);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   return (
-    <main className="min-h-screen bg-white p-4 space-y-6">
-      <h1 className="text-xl font-semibold">
-        Test av Synthesia-video
-      </h1>
+    <main className="min-h-screen bg-white p-4 max-w-md mx-auto space-y-6">
+      <header className="space-y-1">
+        <h1 className="text-2xl font-semibold">Tema: Valgfrihet</h1>
+        <p className="text-gray-600">{progressText}</p>
+      </header>
 
-      <button
-        onClick={speak}
-        className="w-full rounded-2xl bg-black text-white py-4 text-lg"
-      >
-        🔊 Les opp på tamil
-      </button>
+      {/* PUNKTLISTE med video under valgt punkt */}
+      <section className="space-y-4">
+        {videos.map((v, idx) => {
+          const isActive = idx === currentIndex;
 
-      <div className="mx-auto w-full max-w-md">
-  <div className="relative overflow-hidden rounded-2xl border pt-[56.25%]">
-    <iframe
-      src="https://share.synthesia.io/embeds/videos/46623012-eb25-4ed7-abd0-2600205c214c"
-      loading="lazy"
-      title="Synthesia video player - 1. Valgfrihet"
-      allowFullScreen
-      allow="encrypted-media; fullscreen; microphone;"
-      className="absolute left-0 top-0 h-full w-full border-0"
-    />
-  </div>
-</div>
+          return (
+            <div key={v.id} className="rounded-2xl border p-4 space-y-3">
+              <button
+                onClick={() => setCurrentIndex(idx)}
+                className="w-full text-left text-lg font-medium"
+              >
+                {v.title}
+              </button>
+
+              {isActive && (
+                <div className="relative overflow-hidden rounded-2xl border pt-[56.25%]">
+                  <iframe
+                    key={v.id}
+                    src={v.url}
+                    loading="lazy"
+                    title={v.title}
+                    allowFullScreen
+                    allow="encrypted-media; fullscreen; microphone;"
+                    className="absolute left-0 top-0 h-full w-full border-0"
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </section>
+
+      {/* FORTSETT */}
+      <div className="sticky bottom-0 bg-white pt-2">
+        <button
+          onClick={goNext}
+          disabled={!nextExists}
+          className={`w-full rounded-2xl py-4 text-lg font-semibold ${
+            nextExists
+              ? "bg-black text-white"
+              : "bg-gray-200 text-gray-500"
+          }`}
+        >
+          {nextExists ? "FORTSETT" : "FERDIG"}
+        </button>
+      </div>
     </main>
   );
 }
