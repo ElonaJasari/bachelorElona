@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { getProgress, saveProgress } from "@/lib/storage";
 
 const videos = [
   {
@@ -20,8 +21,58 @@ const videos = [
   },
 ];
 
+type VideoStatus = "not_started" | "in_progress" | "completed";
+
+type Progress = {
+  currentVideoId: string;
+  videos: Record<string, { status: VideoStatus }>;
+};
+
+const defaultProgress: Progress = {
+  currentVideoId: videos[0].id,
+  videos: {},
+};
+
+function normalizeProgress(data: any): Progress {
+  if (!data || typeof data !== "object") {
+    return defaultProgress;
+  }
+
+  const normalized: Progress = {
+    currentVideoId:
+      typeof data.currentVideoId === "string"
+        ? data.currentVideoId
+        : videos[0].id,
+    videos: {},
+  };
+
+  if (data.videos && typeof data.videos === "object") {
+    for (const [videoId, value] of Object.entries(data.videos)) {
+      if (value && typeof value === "object" && "status" in value) {
+        const status = (value as { status?: VideoStatus }).status;
+
+        if (
+          status === "not_started" ||
+          status === "in_progress" ||
+          status === "completed"
+        ) {
+          normalized.videos[videoId] = { status };
+        }
+      }
+
+      if (value === true) {
+        normalized.videos[videoId] = { status: "completed" };
+      }
+    }
+  }
+
+  return normalized;
+}
+
 export default function TemaTest() {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [progress, setProgress] = useState<Progress>(defaultProgress);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const nextExists = currentIndex < videos.length - 1;
 
@@ -30,10 +81,150 @@ export default function TemaTest() {
     [currentIndex]
   );
 
-  const goNext = () => {
-    if (!nextExists) return;
-    setCurrentIndex((i) => i + 1);
+  useEffect(() => {
+    const saved = normalizeProgress(getProgress());
+    setProgress(saved);
+
+    const savedIndex = videos.findIndex(
+      (video) => video.id === saved.currentVideoId
+    );
+
+    if (savedIndex !== -1) {
+      setCurrentIndex(savedIndex);
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      console.log("Message from iframe:");
+      console.log("Origin:", event.origin);
+      console.log("Data:", event.data);
+    };
+
+    window.addEventListener("message", handleMessage);
+
+    return () => {
+      window.removeEventListener("message", handleMessage);
+    };
+  }, []);
+
+  const updateProgress = (updated: Progress) => {
+    setProgress(updated);
+    saveProgress(updated);
+  };
+
+  const selectVideo = (idx: number) => {
+    const videoId = videos[idx].id;
+    const currentStatus = progress.videos[videoId]?.status;
+
+    const updated: Progress = {
+      ...progress,
+      currentVideoId: videoId,
+      videos: {
+        ...progress.videos,
+        [videoId]: {
+          status: currentStatus === "completed" ? "completed" : "in_progress",
+        },
+      },
+    };
+
+    updateProgress(updated);
+    setCurrentIndex(idx);
     window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleContinueClick = () => {
+    setShowConfirm(true);
+  };
+
+  const markAsCompletedAndContinue = () => {
+    const currentVideoId = videos[currentIndex].id;
+
+    const updatedCurrent: Progress = {
+      ...progress,
+      currentVideoId,
+      videos: {
+        ...progress.videos,
+        [currentVideoId]: { status: "completed" },
+      },
+    };
+
+    if (!nextExists) {
+      updateProgress(updatedCurrent);
+      setShowConfirm(false);
+      return;
+    }
+
+    const nextIndex = currentIndex + 1;
+    const nextVideoId = videos[nextIndex].id;
+    const nextStatus = updatedCurrent.videos[nextVideoId]?.status;
+
+    const finalProgress: Progress = {
+      ...updatedCurrent,
+      currentVideoId: nextVideoId,
+      videos: {
+        ...updatedCurrent.videos,
+        [nextVideoId]: {
+          status: nextStatus === "completed" ? "completed" : "in_progress",
+        },
+      },
+    };
+
+    updateProgress(finalProgress);
+    setCurrentIndex(nextIndex);
+    setShowConfirm(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const continueLater = () => {
+    const currentVideoId = videos[currentIndex].id;
+
+    const updated: Progress = {
+      ...progress,
+      currentVideoId,
+      videos: {
+        ...progress.videos,
+        [currentVideoId]: {
+          status:
+            progress.videos[currentVideoId]?.status === "completed"
+              ? "completed"
+              : "in_progress",
+        },
+      },
+    };
+
+    updateProgress(updated);
+    setShowConfirm(false);
+  };
+
+  const resetProgress = () => {
+    setProgress(defaultProgress);
+    saveProgress(defaultProgress);
+    setCurrentIndex(0);
+    setShowConfirm(false);
+  };
+
+  const getStatusLabel = (videoId: string) => {
+    const status = progress.videos[videoId]?.status;
+
+    if (status === "completed") {
+      return {
+        text: "Fullført",
+        className: "text-green-600",
+      };
+    }
+
+    if (status === "in_progress") {
+      return {
+        text: "Pågår",
+        className: "text-amber-600",
+      };
+    }
+
+    return {
+      text: "Ikke startet",
+      className: "text-gray-400",
+    };
   };
 
   return (
@@ -44,18 +235,32 @@ export default function TemaTest() {
           <p className="text-gray-600">{progressText}</p>
         </header>
 
-        {/* PUNKTLISTE */}
+        <div className="flex gap-3">
+          <button
+            onClick={resetProgress}
+            className="rounded-xl border px-4 py-2 text-sm font-medium"
+          >
+            Nullstill progresjon
+          </button>
+        </div>
+
         <section className="space-y-4">
           {videos.map((v, idx) => {
             const isActive = idx === currentIndex;
+            const status = getStatusLabel(v.id);
 
             return (
               <div key={v.id} className="rounded-2xl border p-4 space-y-3">
                 <button
-                  onClick={() => setCurrentIndex(idx)}
-                  className="w-full text-left text-lg font-medium"
+                  onClick={() => selectVideo(idx)}
+                  className="w-full text-left"
                 >
-                  {v.title}
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-lg font-medium">{v.title}</span>
+                    <span className={`text-sm font-semibold ${status.className}`}>
+                      {status.text}
+                    </span>
+                  </div>
                 </button>
 
                 {isActive && (
@@ -76,23 +281,46 @@ export default function TemaTest() {
           })}
         </section>
 
-        {/* FORTSETT */}
         <div className="sticky bottom-24 bg-white pt-2">
           <button
-            onClick={goNext}
-            disabled={!nextExists}
+            onClick={handleContinueClick}
             className={`w-full rounded-2xl py-4 text-lg font-semibold ${
-              nextExists
-                ? "bg-black text-white"
-                : "bg-gray-200 text-gray-500"
+              nextExists ? "bg-black text-white" : "bg-gray-900 text-white"
             }`}
           >
-            {nextExists ? "FORTSETT" : "FERDIG"}
+            {nextExists ? "FORTSETT" : "AVSLUTT"}
           </button>
         </div>
       </main>
 
-      {/* BUNNMENY */}
+      {showConfirm && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 space-y-4 shadow-xl">
+            <h2 className="text-xl font-semibold">Har du fullført videoen?</h2>
+            <p className="text-sm text-gray-600">
+              Velg <span className="font-medium">Ja</span> hvis du har sett ferdig.
+              Ellers kan videoen stå som <span className="font-medium">Pågår</span>.
+            </p>
+
+            <div className="space-y-3">
+              <button
+                onClick={markAsCompletedAndContinue}
+                className="w-full rounded-2xl bg-black py-3 text-white font-semibold"
+              >
+                Ja, marker som fullført
+              </button>
+
+              <button
+                onClick={continueLater}
+                className="w-full rounded-2xl border py-3 font-semibold"
+              >
+                Nei, fortsett senere
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-inner">
         <div className="max-w-md mx-auto flex justify-around py-4 text-sm font-medium">
           <button className="flex flex-col items-center">
